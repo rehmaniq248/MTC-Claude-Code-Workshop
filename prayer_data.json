@@ -1,0 +1,18 @@
+{
+  "city": "San Diego",
+  "country": "USA",
+  "gregorian_date": "03-08-2026",
+  "hijri_date": "20 \u1e62afar 1448 AH",
+  "prayers": {
+    "fajr": "04:48",
+    "dhuhr": "12:55",
+    "asr": "16:37",
+    "maghrib": "19:45",
+    "isha": "21:01"
+  },
+  "jummah": {
+    "day": "Friday",
+    "start": "12:45",
+    "end": "13:45"
+  }
+}

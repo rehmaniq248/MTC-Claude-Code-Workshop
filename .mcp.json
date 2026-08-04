@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "prayer-times": {
+      "type": "stdio",
+      "command": "/Users/rehmaniqbal/Documents/MTC-Claude Code Workshop/barakahplan-demo-kit/mcp-server/.venv/bin/python3",
+      "args": [
+        "/Users/rehmaniqbal/Documents/MTC-Claude Code Workshop/barakahplan-demo-kit/mcp-server/prayer_mcp.py"
+      ],
+      "env": {}
+    }
+  }
+}
