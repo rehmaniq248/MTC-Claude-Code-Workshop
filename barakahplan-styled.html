@@ -98,7 +98,7 @@
   }
 
   .layout { display: flex; gap: 20px; align-items: flex-start; }
-  .sidebar { width: 270px; flex-shrink: 0; }
+  .sidebar { width: 280px; flex-shrink: 0; }
   .sidebar h2 {
     font-family: var(--font-display);
     font-size: 14px;
@@ -110,6 +110,32 @@
     padding-top: 4px;
   }
   .sidebar h2:first-child { padding-top: 0; }
+
+  .search-box {
+    width: 100%;
+    padding: 9px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    margin-bottom: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--ink);
+    border-radius: 8px;
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+  .search-box:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .catalog-meta-line { font-size: 11px; color: var(--ink-soft); margin-bottom: 8px; }
+  .catalog-scroll {
+    max-height: 380px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .catalog-scroll::-webkit-scrollbar { width: 8px; }
+  .catalog-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
   .course-card {
     border: 1px solid var(--border);
@@ -274,7 +300,9 @@
     <h2>My Schedule</h2>
     <div id="scheduledList"></div>
     <h2>Add a Course</h2>
-    <div id="catalogList"></div>
+    <input type="text" id="courseSearch" class="search-box" placeholder="Search by code or title (e.g. &quot;CSE 101&quot;, &quot;linguistics&quot;)">
+    <div class="catalog-meta-line" id="catalogMeta"></div>
+    <div class="catalog-scroll" id="catalogList"></div>
   </div>
   <div class="grid-wrap">
     <div class="grid" id="grid"></div>
@@ -292,21 +320,59 @@ const PRAYER_DATA = {
   "jummah": { "day": "Fri", "start": "12:45", "end": "13:45" }
 };
 
-/* ---------- Sample UCSD course catalog ---------- */
+/* ---------- Sample UCSD course catalog (WebReg-style breadth) ---------- */
 const ALL_COURSES = [
-  { id: "cse100",  title: "CSE 100 — Adv. Data Structures", days: ["Mon","Wed","Fri"], start: "09:00", end: "09:50" },
-  { id: "math20c", title: "MATH 20C — Calc for Sci & Eng",  days: ["Tue","Thu"],        start: "11:00", end: "12:20" },
-  { id: "hist12",  title: "HIST 12 — World History",         days: ["Mon","Wed","Fri"], start: "10:00", end: "10:50" },
-  { id: "econ1",   title: "ECON 1 — Principles of Micro",    days: ["Tue","Thu"],        start: "14:00", end: "15:20" },
-  { id: "lign101", title: "LIGN 101 — Syntax Discussion",    days: ["Fri"],              start: "12:30", end: "13:20" },
-  { id: "cse101",  title: "CSE 101 — Algorithm Design",      days: ["Mon","Wed"],        start: "15:30", end: "16:50" },
-  { id: "cse291",  title: "CSE 291 — Evening Systems Lab",   days: ["Tue"],              start: "19:00", end: "20:50" },
+  // Starting schedule (clean)
+  { id: "cse100",   code: "CSE 100",   title: "Advanced Data Structures",      days: ["Mon","Wed","Fri"], start: "09:00", end: "09:50" },
+  { id: "math20c",  code: "MATH 20C",  title: "Calc for Sci & Eng",            days: ["Tue","Thu"],        start: "11:00", end: "12:20" },
+  { id: "hist12",   code: "HIST 12",   title: "World History",                 days: ["Mon","Wed","Fri"], start: "10:00", end: "10:50" },
+  { id: "econ1",    code: "ECON 1",    title: "Principles of Micro",           days: ["Tue","Thu"],        start: "14:00", end: "15:20" },
+
+  // Flagged demo courses (drop these in live)
+  { id: "lign101",  code: "LIGN 101",  title: "Syntax Discussion",             days: ["Fri"],              start: "12:30", end: "13:20" },
+  { id: "cse101",   code: "CSE 101",   title: "Algorithm Design",              days: ["Mon","Wed"],        start: "15:30", end: "16:50" },
+  { id: "cse291",   code: "CSE 291",   title: "Evening Systems Lab",           days: ["Tue"],              start: "19:00", end: "20:50" },
+
+  // Broader catalog — clean classes across departments
+  { id: "cse110",   code: "CSE 110",   title: "Software Engineering",          days: ["Tue","Thu"],        start: "09:30", end: "10:50" },
+  { id: "cse120",   code: "CSE 120",   title: "Operating Systems",             days: ["Mon","Wed","Fri"], start: "14:00", end: "14:50" },
+  { id: "cse141",   code: "CSE 141",   title: "Computer Architecture",         days: ["Mon","Wed"],        start: "10:00", end: "10:50" },
+  { id: "cse151a",  code: "CSE 151A",  title: "Machine Learning",              days: ["Tue","Thu"],        start: "14:45", end: "16:05" },
+  { id: "cse158",   code: "CSE 158",   title: "Recommender Systems",           days: ["Mon","Wed"],        start: "08:00", end: "08:50" },
+  { id: "cse190",   code: "CSE 190",   title: "Special Topics: Security",      days: ["Fri"],              start: "10:00", end: "10:50" },
+  { id: "math20f",  code: "MATH 20F",  title: "Linear Algebra",                days: ["Mon","Wed","Fri"], start: "08:00", end: "08:50" },
+  { id: "math109",  code: "MATH 109",  title: "Mathematical Reasoning",        days: ["Mon","Wed","Fri"], start: "11:00", end: "11:50" },
+  { id: "math142a", code: "MATH 142A", title: "Intro to Analysis I",           days: ["Tue","Thu"],        start: "09:30", end: "10:50" },
+  { id: "math180a", code: "MATH 180A", title: "Intro to Probability",          days: ["Mon","Wed"],        start: "13:45", end: "14:35" },
+  { id: "econ3",    code: "ECON 3",    title: "Principles of Macro",           days: ["Mon","Wed","Fri"], start: "09:00", end: "09:50" },
+  { id: "econ100a", code: "ECON 100A", title: "Microeconomic Theory",          days: ["Tue","Thu"],        start: "17:30", end: "18:50" },
+  { id: "hist100",  code: "HIST 100",  title: "American Revolution",           days: ["Tue","Thu"],        start: "08:00", end: "09:20" },
+  { id: "hist141",  code: "HIST 141",  title: "Modern Middle East",            days: ["Mon","Wed"],        start: "15:00", end: "15:50" },
+  { id: "lign110",  code: "LIGN 110",  title: "Intro to Linguistics",          days: ["Tue","Thu"],        start: "13:45", end: "15:05" },
+  { id: "lign165",  code: "LIGN 165",  title: "Language and Society",          days: ["Mon","Wed"],        start: "11:00", end: "11:50" },
+  { id: "vis20",    code: "VIS 20",    title: "Intro to Art-Making",           days: ["Mon","Wed"],        start: "14:00", end: "14:50" },
+  { id: "vis84",    code: "VIS 84",    title: "Intro to Digital Photography",  days: ["Tue","Thu"],        start: "08:00", end: "09:20" },
+  { id: "phil1",    code: "PHIL 1",    title: "Intro to Philosophy",           days: ["Tue","Thu"],        start: "11:00", end: "12:20" },
+  { id: "phil27",   code: "PHIL 27",   title: "Ethics of Eating",              days: ["Mon","Wed"],        start: "09:00", end: "09:50" },
+  { id: "bild1",    code: "BILD 1",    title: "La Jolla Coast: Biology",       days: ["Mon","Wed","Fri"], start: "10:00", end: "10:50" },
+  { id: "bild3",    code: "BILD 3",    title: "Organismic & Evolutionary Bio", days: ["Tue","Thu"],        start: "09:30", end: "10:50" },
+  { id: "chem6a",   code: "CHEM 6A",   title: "General Chemistry",             days: ["Mon","Wed","Fri"], start: "09:00", end: "09:50" },
+  { id: "chem40a",  code: "CHEM 40A",  title: "Organic Chemistry",             days: ["Tue","Thu"],        start: "14:45", end: "16:05" },
+  { id: "poli10",   code: "POLI 10",   title: "Intro to Political Science",    days: ["Mon","Wed","Fri"], start: "15:00", end: "15:50" },
+  { id: "poli100d", code: "POLI 100D", title: "Intro to American Politics",    days: ["Tue","Thu"],        start: "17:30", end: "18:50" },
+  { id: "phys2a",   code: "PHYS 2A",   title: "Physics for Life Sciences",     days: ["Mon","Wed","Fri"], start: "11:00", end: "11:50" },
+  { id: "mus1",     code: "MUS 1",     title: "Music Fundamentals",            days: ["Tue","Thu"],        start: "08:00", end: "09:20" },
+  { id: "tdhd10",   code: "TDHD 10",   title: "Intro to Theatre",              days: ["Mon","Wed"],        start: "18:00", end: "19:20" },
+  { id: "anth1",    code: "ANTH 1",    title: "Intro to Archaeology",          days: ["Mon","Wed","Fri"], start: "14:00", end: "14:50" },
+  { id: "cogs1",    code: "COGS 1",    title: "Intro to Cognitive Science",    days: ["Tue","Thu"],        start: "09:30", end: "10:50" },
 ];
 
 /* Start with the low-risk courses already on the schedule; the three
    flagged ones (Friday discussion, Asr-overlap lecture, evening lab)
-   live in the catalog so they can be "dropped in" live during the demo. */
+   live in the searchable catalog so they can be "dropped in" live during
+   the demo — search "LIGN 101", "CSE 101", or "291" to find them fast. */
 let scheduledIds = ["cse100", "math20c", "hist12", "econ1"];
+let catalogSearch = "";
 
 /* ---------- Time helpers ---------- */
 const DAY_ORDER = ["Mon","Tue","Wed","Thu","Fri"];
@@ -409,36 +475,58 @@ function render() {
   renderGrid(ramadanMode);
 }
 
+function makeCourseCard(course, isScheduled, ramadanMode) {
+  const card = document.createElement("div");
+  card.className = "course-card";
+  card.innerHTML =
+    '<div class="title">' + course.code + ' — ' + course.title + '</div>' +
+    '<div class="meta">' + course.days.join("/") + " " + course.start + "–" + course.end + '</div>';
+  const btn = document.createElement("button");
+  btn.textContent = isScheduled ? "Remove" : "Add";
+  btn.onclick = () => {
+    if (isScheduled) {
+      scheduledIds = scheduledIds.filter(id => id !== course.id);
+    } else {
+      scheduledIds.push(course.id);
+    }
+    render();
+  };
+  card.appendChild(btn);
+  return card;
+}
+
 function renderSidebar(ramadanMode) {
   const scheduledEl = document.getElementById("scheduledList");
   const catalogEl = document.getElementById("catalogList");
+  const metaEl = document.getElementById("catalogMeta");
   scheduledEl.innerHTML = "";
   catalogEl.innerHTML = "";
 
-  ALL_COURSES.forEach(course => {
-    const isScheduled = scheduledIds.includes(course.id);
-    const card = document.createElement("div");
-    card.className = "course-card";
-    const conflict = checkConflicts(course, ramadanMode);
-    card.innerHTML =
-      '<div class="title">' + course.title + '</div>' +
-      '<div class="meta">' + course.days.join("/") + " " + course.start + "–" + course.end + '</div>';
-    const btn = document.createElement("button");
-    btn.textContent = isScheduled ? "Remove" : "Add";
-    btn.onclick = () => {
-      if (isScheduled) {
-        scheduledIds = scheduledIds.filter(id => id !== course.id);
-      } else {
-        scheduledIds.push(course.id);
-      }
-      render();
-    };
-    card.appendChild(btn);
-    (isScheduled ? scheduledEl : catalogEl).appendChild(card);
+  scheduledIds.forEach(id => {
+    const course = ALL_COURSES.find(c => c.id === id);
+    scheduledEl.appendChild(makeCourseCard(course, true, ramadanMode));
   });
-
   if (scheduledEl.children.length === 0) {
     scheduledEl.innerHTML = '<div class="meta">No courses scheduled yet.</div>';
+  }
+
+  // WebReg-style search: filter the unscheduled catalog by code or title.
+  const query = catalogSearch.trim().toLowerCase();
+  const unscheduled = ALL_COURSES.filter(c => !scheduledIds.includes(c.id));
+  const matches = (query
+    ? unscheduled.filter(c => (c.code + " " + c.title).toLowerCase().includes(query))
+    : unscheduled
+  ).sort((a, b) => a.code.localeCompare(b.code));
+
+  metaEl.textContent = query
+    ? matches.length + " match" + (matches.length === 1 ? "" : "es") + ' for "' + catalogSearch.trim() + '"'
+    : matches.length + " courses in the catalog — search to narrow it down";
+
+  matches.forEach(course => {
+    catalogEl.appendChild(makeCourseCard(course, false, ramadanMode));
+  });
+  if (matches.length === 0) {
+    catalogEl.innerHTML = '<div class="meta">No courses match that search.</div>';
   }
 }
 
@@ -521,7 +609,7 @@ function renderGrid(ramadanMode) {
       block.style.height = Math.max(20, (end - start) * PX_PER_MIN) + "px";
       block.title = conflict.notes.join(" ") || "No conflicts.";
       block.innerHTML =
-        '<span class="ctitle">' + course.title.split(" — ")[0] + '</span>' +
+        '<span class="ctitle">' + course.code + '</span>' +
         '<span class="ctime">' + course.start + "–" + course.end + '</span>';
       col.appendChild(block);
     });
@@ -531,6 +619,10 @@ function renderGrid(ramadanMode) {
 }
 
 document.getElementById("ramadanToggle").addEventListener("change", render);
+document.getElementById("courseSearch").addEventListener("input", (e) => {
+  catalogSearch = e.target.value;
+  renderSidebar(document.getElementById("ramadanToggle").checked);
+});
 render();
 </script>
 </body>
