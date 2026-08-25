@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BarakahPlan — Course Planner</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 16px; background: #fafafa; color: #222; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: #555; font-size: 13px; margin-bottom: 16px; }
+  .toolbar { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+  .toolbar label { font-size: 14px; }
+  .layout { display: flex; gap: 16px; align-items: flex-start; }
+  .sidebar { width: 280px; flex-shrink: 0; }
+  .sidebar h2 { font-size: 14px; margin: 0 0 8px; }
+  .course-card { border: 1px solid #ccc; background: #fff; padding: 8px; margin-bottom: 8px; font-size: 13px; border-radius: 4px; }
+  .course-card .title { font-weight: bold; }
+  .course-card .meta { color: #666; font-size: 12px; }
+  .course-card button { margin-top: 6px; font-size: 12px; cursor: pointer; }
+  .legend { font-size: 12px; margin-bottom: 12px; }
+  .legend span { display: inline-block; width: 10px; height: 10px; margin-right: 4px; vertical-align: middle; border-radius: 2px; }
+  .search-box { width: 100%; padding: 6px 8px; font-size: 13px; margin-bottom: 8px; border: 1px solid #bbb; border-radius: 4px; }
+  .catalog-scroll { max-height: 360px; overflow-y: auto; padding-right: 2px; border: 1px solid #eee; border-radius: 4px; padding: 6px; }
+  .catalog-meta-line { font-size: 11px; color: #888; margin-bottom: 6px; }
+  .grid-wrap { flex: 1; overflow-x: auto; border: 1px solid #ccc; background: #fff; }
+  .grid { display: grid; grid-template-columns: 50px repeat(5, 1fr); position: relative; min-width: 700px; }
+  .grid-header { display: contents; }
+  .grid-header div { font-size: 12px; font-weight: bold; text-align: center; padding: 6px 0; border-bottom: 1px solid #ccc; background: #f0f0f0; position: sticky; top: 0; }
+  .time-col { position: relative; border-right: 1px solid #ccc; }
+  .time-col .hour-label { position: absolute; right: 4px; font-size: 10px; color: #888; transform: translateY(-50%); }
+  .day-col { position: relative; border-right: 1px solid #eee; }
+  .hour-line { position: absolute; left: 0; right: 0; border-top: 1px solid #eee; }
+  .prayer-band { position: absolute; left: 0; right: 0; height: 2px; background: #999; z-index: 1; }
+  .prayer-band .label { position: absolute; left: 2px; top: -14px; font-size: 10px; color: #666; white-space: nowrap; }
+  .jummah-band { position: absolute; background: rgba(150,150,150,0.15); border-top: 1px dashed #888; border-bottom: 1px dashed #888; z-index: 0; }
+  .class-block { position: absolute; left: 2px; right: 2px; border-radius: 3px; padding: 4px; font-size: 11px; overflow: hidden; z-index: 2; border: 2px solid; cursor: default; }
+  .class-block .ctitle { font-weight: bold; display: block; }
+  .class-block .ctime { display: block; font-size: 10px; }
+  .badge-green { background: #e8f7ea; border-color: #2e7d32; }
+  .badge-yellow { background: #fff8e1; border-color: #f9a825; }
+  .badge-red { background: #fdecea; border-color: #c62828; }
+  .badge-ramadan { outline: 2px dashed #6a1b9a; outline-offset: 1px; }
+  .conflict-note { font-size: 10px; margin-top: 2px; }
+</style>
+</head>
+<body>
+
+<h1>BarakahPlan</h1>
+<div class="sub" id="dateSub">Loading prayer data…</div>
+
+<div class="toolbar">
+  <label><input type="checkbox" id="ramadanToggle"> Ramadan mode (flags Maghrib/iftar overlaps)</label>
+</div>
+
+<div class="legend">
+  <span class="badge-green" style="border:1px solid #2e7d32;"></span>No conflict
+  <span class="badge-yellow" style="border:1px solid #f9a825;"></span>Overlaps a prayer, room to pray
+  <span class="badge-red" style="border:1px solid #c62828;"></span>Hard conflict
+  <span style="outline:2px dashed #6a1b9a; display:inline-block; width:10px; height:10px;"></span>Ramadan/iftar flag
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+    <h2>My Schedule</h2>
+    <div id="scheduledList"></div>
+    <h2>Add a Course</h2>
+    <input type="text" id="courseSearch" class="search-box" placeholder="Search by code or title (e.g. &quot;CSE 101&quot;, &quot;linguistics&quot;)">
+    <div class="catalog-meta-line" id="catalogMeta"></div>
+    <div class="catalog-scroll" id="catalogList"></div>
+  </div>
+  <div class="grid-wrap">
+    <div class="grid" id="grid"></div>
+  </div>
+</div>
+
+<script>
+/* ---------- Prayer data: ICSD Iqama times (Aug 25, 2026), same Jummah
+   window the prayer-schedule skill uses so both surfaces agree ---------- */
+const PRAYER_DATA = {
+  "city": "San Diego",
+  "country": "USA",
+  "gregorian_date": "25-08-2026",
+  "hijri_date": "12 Rabi al-Awwal 1448 AH",
+  "prayers": { "fajr": "05:38", "dhuhr": "13:15", "asr": "16:45", "maghrib": "19:32", "isha": "20:45" },
+  "jummah": { "day": "Fri", "start": "12:45", "end": "13:45" }
+};
+
+/* ---------- Sample UCSD course catalog (WebReg-style breadth) ---------- */
+const ALL_COURSES = [
+  // Starting schedule (clean)
+  { id: "cse100",   code: "CSE 100",   title: "Advanced Data Structures",      days: ["Mon","Wed","Fri"], start: "09:00", end: "09:50" },
+  { id: "math20c",  code: "MATH 20C",  title: "Calc for Sci & Eng",            days: ["Tue","Thu"],        start: "11:00", end: "12:20" },
+  { id: "hist12",   code: "HIST 12",   title: "World History",                 days: ["Mon","Wed","Fri"], start: "10:00", end: "10:50" },
+  { id: "econ1",    code: "ECON 1",    title: "Principles of Micro",           days: ["Tue","Thu"],        start: "14:00", end: "15:20" },
+
+  // Flagged demo courses (drop these in live)
+  { id: "lign101",  code: "LIGN 101",  title: "Syntax Discussion",             days: ["Fri"],              start: "12:30", end: "13:20" },
+  { id: "cse101",   code: "CSE 101",   title: "Algorithm Design",              days: ["Mon","Wed"],        start: "15:30", end: "16:50" },
+  { id: "cse291",   code: "CSE 291",   title: "Evening Systems Lab",           days: ["Tue"],              start: "19:00", end: "20:40" },
+
+  // Broader catalog — clean classes across departments
+  { id: "cse110",   code: "CSE 110",   title: "Software Engineering",          days: ["Tue","Thu"],        start: "09:30", end: "10:50" },
+  { id: "cse120",   code: "CSE 120",   title: "Operating Systems",             days: ["Mon","Wed","Fri"], start: "14:00", end: "14:50" },
+  { id: "cse141",   code: "CSE 141",   title: "Computer Architecture",         days: ["Mon","Wed"],        start: "10:00", end: "10:50" },
+  { id: "cse151a",  code: "CSE 151A",  title: "Machine Learning",              days: ["Tue","Thu"],        start: "14:45", end: "16:05" },
+  { id: "cse158",   code: "CSE 158",   title: "Recommender Systems",           days: ["Mon","Wed"],        start: "08:00", end: "08:50" },
+  { id: "cse190",   code: "CSE 190",   title: "Special Topics: Security",      days: ["Fri"],              start: "10:00", end: "10:50" },
+  { id: "math20f",  code: "MATH 20F",  title: "Linear Algebra",                days: ["Mon","Wed","Fri"], start: "08:00", end: "08:50" },
+  { id: "math109",  code: "MATH 109",  title: "Mathematical Reasoning",        days: ["Mon","Wed","Fri"], start: "11:00", end: "11:50" },
+  { id: "math142a", code: "MATH 142A", title: "Intro to Analysis I",           days: ["Tue","Thu"],        start: "09:30", end: "10:50" },
+  { id: "math180a", code: "MATH 180A", title: "Intro to Probability",          days: ["Mon","Wed"],        start: "14:15", end: "15:05" },
+  { id: "econ3",    code: "ECON 3",    title: "Principles of Macro",           days: ["Mon","Wed","Fri"], start: "09:00", end: "09:50" },
+  { id: "econ100a", code: "ECON 100A", title: "Microeconomic Theory",          days: ["Tue","Thu"],        start: "17:30", end: "18:50" },
+  { id: "hist100",  code: "HIST 100",  title: "American Revolution",           days: ["Tue","Thu"],        start: "08:00", end: "09:20" },
+  { id: "hist141",  code: "HIST 141",  title: "Modern Middle East",            days: ["Mon","Wed"],        start: "15:00", end: "15:50" },
+  { id: "lign110",  code: "LIGN 110",  title: "Intro to Linguistics",          days: ["Tue","Thu"],        start: "14:15", end: "15:35" },
+  { id: "lign165",  code: "LIGN 165",  title: "Language and Society",          days: ["Mon","Wed"],        start: "11:00", end: "11:50" },
+  { id: "vis20",    code: "VIS 20",    title: "Intro to Art-Making",           days: ["Mon","Wed"],        start: "14:00", end: "14:50" },
+  { id: "vis84",    code: "VIS 84",    title: "Intro to Digital Photography",  days: ["Tue","Thu"],        start: "08:00", end: "09:20" },
+  { id: "phil1",    code: "PHIL 1",    title: "Intro to Philosophy",           days: ["Tue","Thu"],        start: "11:00", end: "12:20" },
+  { id: "phil27",   code: "PHIL 27",   title: "Ethics of Eating",              days: ["Mon","Wed"],        start: "09:00", end: "09:50" },
+  { id: "bild1",    code: "BILD 1",    title: "La Jolla Coast: Biology",       days: ["Mon","Wed","Fri"], start: "10:00", end: "10:50" },
+  { id: "bild3",    code: "BILD 3",    title: "Organismic & Evolutionary Bio", days: ["Tue","Thu"],        start: "09:30", end: "10:50" },
+  { id: "chem6a",   code: "CHEM 6A",   title: "General Chemistry",             days: ["Mon","Wed","Fri"], start: "09:00", end: "09:50" },
+  { id: "chem40a",  code: "CHEM 40A",  title: "Organic Chemistry",             days: ["Tue","Thu"],        start: "14:45", end: "16:05" },
+  { id: "poli10",   code: "POLI 10",   title: "Intro to Political Science",    days: ["Mon","Wed","Fri"], start: "15:00", end: "15:50" },
+  { id: "poli100d", code: "POLI 100D", title: "Intro to American Politics",    days: ["Tue","Thu"],        start: "17:30", end: "18:50" },
+  { id: "phys2a",   code: "PHYS 2A",   title: "Physics for Life Sciences",     days: ["Mon","Wed","Fri"], start: "11:00", end: "11:50" },
+  { id: "mus1",     code: "MUS 1",     title: "Music Fundamentals",            days: ["Tue","Thu"],        start: "08:00", end: "09:20" },
+  { id: "tdhd10",   code: "TDHD 10",   title: "Intro to Theatre",              days: ["Mon","Wed"],        start: "18:00", end: "19:20" },
+  { id: "anth1",    code: "ANTH 1",    title: "Intro to Archaeology",          days: ["Mon","Wed","Fri"], start: "14:00", end: "14:50" },
+  { id: "cogs1",    code: "COGS 1",    title: "Intro to Cognitive Science",    days: ["Tue","Thu"],        start: "09:30", end: "10:50" },
+];
+
+/* Start with the low-risk courses already on the schedule; the three
+   flagged ones (Friday discussion, Asr-overlap lecture, evening lab)
+   live in the searchable catalog so they can be "dropped in" live during
+   the demo — search "LIGN 101", "CSE 101", or "291" to find them fast. */
+let scheduledIds = ["cse100", "math20c", "hist12", "econ1"];
+let catalogSearch = "";
+
+/* ---------- Time helpers ---------- */
+const DAY_ORDER = ["Mon","Tue","Wed","Thu","Fri"];
+const GRID_START_MIN = 8 * 60;   // 08:00
+const GRID_END_MIN = 22 * 60;    // 22:00
+const PX_PER_MIN = 1;
+const NEED_MIN = 15; // minutes needed to actually pray
+
+function toMinutes(hhmm) {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function overlaps(aStart, aEnd, bStart, bEnd) {
+  return aStart < bEnd && aEnd > bStart;
+}
+
+/* Prayer windows: a realistic span after adhan in which a student would
+   pray, not the full multi-hour gap until the next prayer. Maghrib is
+   handled separately (Ramadan/iftar mode only), since outside Ramadan
+   its short window rarely conflicts with a class schedule the same way. */
+const PRAYER_WINDOW_LEN_MIN = { fajr: 45, dhuhr: 45, asr: 45, isha: 45 };
+function buildPrayerWindows() {
+  return Object.keys(PRAYER_WINDOW_LEN_MIN).map(name => {
+    const start = toMinutes(PRAYER_DATA.prayers[name]);
+    return { name, start, end: start + PRAYER_WINDOW_LEN_MIN[name] };
+  });
+}
+const PRAYER_WINDOWS = buildPrayerWindows();
+const JUMMAH_START = toMinutes(PRAYER_DATA.jummah.start);
+const JUMMAH_END = toMinutes(PRAYER_DATA.jummah.end);
+
+/* ---------- Conflict detection ---------- */
+function checkConflicts(course, ramadanMode) {
+  const start = toMinutes(course.start);
+  const end = toMinutes(course.end);
+  const notes = [];
+  let level = "green";
+
+  // Hard rule: Friday class overlapping the Jummah block.
+  if (course.days.includes("Fri") && overlaps(start, end, JUMMAH_START, JUMMAH_END)) {
+    level = "red";
+    notes.push("Overlaps Friday Jummah (" + PRAYER_DATA.jummah.start + "–" + PRAYER_DATA.jummah.end + ") — hard conflict.");
+  }
+
+  // General prayer-window overlap.
+  for (const w of PRAYER_WINDOWS) {
+    if (!overlaps(start, end, w.start, w.end)) continue;
+    const freeBefore = Math.max(0, Math.min(start, w.end) - w.start);
+    const freeAfter = Math.max(0, w.end - Math.max(end, w.start));
+    const hasRoom = freeBefore >= NEED_MIN || freeAfter >= NEED_MIN;
+    if (hasRoom) {
+      if (level !== "red") level = "yellow";
+      notes.push("Overlaps " + w.name[0].toUpperCase() + w.name.slice(1) + " window, but there's room to pray in it.");
+    } else {
+      level = "red";
+      notes.push("Fully covers the " + w.name[0].toUpperCase() + w.name.slice(1) + " window — no time to pray.");
+    }
+  }
+
+  // Ramadan mode: flag overlap with Maghrib/iftar.
+  let ramadanFlag = false;
+  if (ramadanMode) {
+    const maghribStart = toMinutes(PRAYER_DATA.prayers.maghrib);
+    const iftarEnd = maghribStart + 30;
+    if (overlaps(start, end, maghribStart, iftarEnd)) {
+      ramadanFlag = true;
+      notes.push("Ramadan: overlaps Maghrib/iftar — student may need to step out to break their fast.");
+    }
+  }
+
+  return { level, notes, ramadanFlag };
+}
+
+/* ---------- Eid detection from Hijri date ---------- */
+function detectEid(hijriDateStr) {
+  const m = hijriDateStr.match(/^(\d+)\s+([A-Za-z]+)/);
+  if (!m) return null;
+  const day = parseInt(m[1], 10);
+  const month = m[2];
+  if (month === "Shawwal" && day === 1) {
+    return "Eid al-Fitr — projected, subject to moonsighting.";
+  }
+  if (month === "DhulHijjah" || month === "Dhu" || month === "DhulHijja") {
+    if (day === 10) return "Eid al-Adha — projected, subject to moonsighting.";
+  }
+  return null;
+}
+
+/* ---------- Rendering ---------- */
+function render() {
+  const ramadanMode = document.getElementById("ramadanToggle").checked;
+
+  document.getElementById("dateSub").textContent =
+    PRAYER_DATA.city + ", " + PRAYER_DATA.country + " · " + PRAYER_DATA.gregorian_date +
+    " · " + PRAYER_DATA.hijri_date +
+    (detectEid(PRAYER_DATA.hijri_date) ? " · " + detectEid(PRAYER_DATA.hijri_date) : " · no Eid today");
+
+  renderSidebar(ramadanMode);
+  renderGrid(ramadanMode);
+}
+
+function makeCourseCard(course, isScheduled, ramadanMode) {
+  const card = document.createElement("div");
+  card.className = "course-card";
+  card.innerHTML =
+    '<div class="title">' + course.code + ' — ' + course.title + '</div>' +
+    '<div class="meta">' + course.days.join("/") + " " + course.start + "–" + course.end + '</div>';
+  const btn = document.createElement("button");
+  btn.textContent = isScheduled ? "Remove" : "Add";
+  btn.onclick = () => {
+    if (isScheduled) {
+      scheduledIds = scheduledIds.filter(id => id !== course.id);
+    } else {
+      scheduledIds.push(course.id);
+    }
+    render();
+  };
+  card.appendChild(btn);
+  return card;
+}
+
+function renderSidebar(ramadanMode) {
+  const scheduledEl = document.getElementById("scheduledList");
+  const catalogEl = document.getElementById("catalogList");
+  const metaEl = document.getElementById("catalogMeta");
+  scheduledEl.innerHTML = "";
+  catalogEl.innerHTML = "";
+
+  scheduledIds.forEach(id => {
+    const course = ALL_COURSES.find(c => c.id === id);
+    scheduledEl.appendChild(makeCourseCard(course, true, ramadanMode));
+  });
+  if (scheduledEl.children.length === 0) {
+    scheduledEl.innerHTML = '<div class="meta">No courses scheduled yet.</div>';
+  }
+
+  // WebReg-style search: filter the unscheduled catalog by code or title.
+  const query = catalogSearch.trim().toLowerCase();
+  const unscheduled = ALL_COURSES.filter(c => !scheduledIds.includes(c.id));
+  const matches = (query
+    ? unscheduled.filter(c => (c.code + " " + c.title).toLowerCase().includes(query))
+    : unscheduled
+  ).sort((a, b) => a.code.localeCompare(b.code));
+
+  metaEl.textContent = query
+    ? matches.length + " match" + (matches.length === 1 ? "" : "es") + ' for "' + catalogSearch.trim() + '"'
+    : matches.length + " courses in the catalog — search to narrow it down";
+
+  matches.forEach(course => {
+    catalogEl.appendChild(makeCourseCard(course, false, ramadanMode));
+  });
+  if (matches.length === 0) {
+    catalogEl.innerHTML = '<div class="meta">No courses match that search.</div>';
+  }
+}
+
+function renderGrid(ramadanMode) {
+  const grid = document.getElementById("grid");
+  grid.innerHTML = "";
+  const totalHeight = (GRID_END_MIN - GRID_START_MIN) * PX_PER_MIN;
+
+  // Header row
+  const header = document.createElement("div");
+  header.className = "grid-header";
+  header.innerHTML = "<div></div>" + DAY_ORDER.map(d => "<div>" + d + "</div>").join("");
+  grid.appendChild(header);
+
+  // Time column
+  const timeCol = document.createElement("div");
+  timeCol.className = "time-col";
+  timeCol.style.height = totalHeight + "px";
+  for (let h = 8; h <= 22; h++) {
+    const y = (h * 60 - GRID_START_MIN) * PX_PER_MIN;
+    const lbl = document.createElement("div");
+    lbl.className = "hour-label";
+    lbl.style.top = y + "px";
+    lbl.textContent = (h % 12 === 0 ? 12 : h % 12) + (h < 12 ? "am" : "pm");
+    timeCol.appendChild(lbl);
+  }
+  grid.appendChild(timeCol);
+
+  // Day columns
+  DAY_ORDER.forEach(dayAbbr => {
+    const col = document.createElement("div");
+    col.className = "day-col";
+    col.style.height = totalHeight + "px";
+
+    // hour gridlines
+    for (let h = 8; h <= 22; h++) {
+      const y = (h * 60 - GRID_START_MIN) * PX_PER_MIN;
+      const line = document.createElement("div");
+      line.className = "hour-line";
+      line.style.top = y + "px";
+      col.appendChild(line);
+    }
+
+    // Jummah band (Friday only)
+    if (dayAbbr === "Fri") {
+      const band = document.createElement("div");
+      band.className = "jummah-band";
+      band.style.top = ((JUMMAH_START - GRID_START_MIN) * PX_PER_MIN) + "px";
+      band.style.height = ((JUMMAH_END - JUMMAH_START) * PX_PER_MIN) + "px";
+      band.style.left = "0"; band.style.right = "0";
+      col.appendChild(band);
+    }
+
+    // Prayer bands
+    Object.entries(PRAYER_DATA.prayers).forEach(([name, time]) => {
+      const mins = toMinutes(time);
+      if (mins < GRID_START_MIN || mins > GRID_END_MIN) return;
+      const band = document.createElement("div");
+      band.className = "prayer-band";
+      band.style.top = ((mins - GRID_START_MIN) * PX_PER_MIN) + "px";
+      if (dayAbbr === "Mon") {
+        const label = document.createElement("div");
+        label.className = "label";
+        label.textContent = name[0].toUpperCase() + name.slice(1);
+        band.appendChild(label);
+      }
+      col.appendChild(band);
+    });
+
+    // Class blocks
+    scheduledIds.forEach(id => {
+      const course = ALL_COURSES.find(c => c.id === id);
+      if (!course.days.includes(dayAbbr)) return;
+      const start = toMinutes(course.start);
+      const end = toMinutes(course.end);
+      const conflict = checkConflicts(course, ramadanMode);
+      const block = document.createElement("div");
+      block.className = "class-block badge-" + conflict.level + (conflict.ramadanFlag ? " badge-ramadan" : "");
+      block.style.top = ((start - GRID_START_MIN) * PX_PER_MIN) + "px";
+      block.style.height = Math.max(20, (end - start) * PX_PER_MIN) + "px";
+      block.title = conflict.notes.join(" ") || "No conflicts.";
+      block.innerHTML =
+        '<span class="ctitle">' + course.code + '</span>' +
+        '<span class="ctime">' + course.start + "–" + course.end + '</span>';
+      col.appendChild(block);
+    });
+
+    grid.appendChild(col);
+  });
+}
+
+document.getElementById("ramadanToggle").addEventListener("change", render);
+document.getElementById("courseSearch").addEventListener("input", (e) => {
+  catalogSearch = e.target.value;
+  renderSidebar(document.getElementById("ramadanToggle").checked);
+});
+render();
+</script>
+</body>
+</html>
